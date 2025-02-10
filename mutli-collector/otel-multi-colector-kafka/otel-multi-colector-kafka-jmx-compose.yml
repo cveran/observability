@@ -1,0 +1,140 @@
+version: '3.8'
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    container_name: zookeeper
+    networks: 
+      - kafka_network
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    networks: 
+       kafka_network:
+         ipv4_address: 192.168.100.10
+    environment:
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"  
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://192.168.100.10:9092,EXTERNAL://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      
+      # Habilitar JMX Exporter
+      JMX_PORT: 9999
+      KAFKA_OPTS: "-javaagent:/jmx_exporter/jmx_prometheus_javaagent-0.16.1.jar=7071:/jmx_exporter/kafka-jmx-config.yml"
+
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+      - "7071:7071"  # Puerto para métricas JMX Exporter
+
+    volumes:
+      - ./jmx_exporter:/jmx_exporter  # Montar configuración de JMX Exporter
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    depends_on:
+      - kafka
+    networks: 
+      - kafka_network
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: 192.168.100.10:9092
+    ports:
+      - "8080:8080"
+
+  otel-collector-1:
+    image: otel/opentelemetry-collector:latest
+    container_name: otel-collector-1
+    networks: 
+      - kafka_network
+    volumes:
+      - ./otel-collector-1-config.yaml:/etc/otel-collector-config.yaml
+    command:
+      ["--config=/etc/otel-collector-config.yaml"]
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "55679:55679"
+      - "13133:13133"
+
+  otel-collector-2:
+    image: otel/opentelemetry-collector:latest
+    container_name: otel-collector-2
+    networks: 
+      - kafka_network
+    volumes:
+      - ./otel-collector-2-config.yaml:/etc/otel-collector-config.yaml
+    command:
+      ["--config=/etc/otel-collector-config.yaml"]
+    ports:
+      - "4319:4317"
+      - "4320:4318"
+      - "55680:55680"
+      - "13134:13134"
+  
+  prometheus:
+    container_name: prometheus
+    image: prom/prometheus
+    networks: 
+      - kafka_network
+    command: [--config.file=/etc/prometheus/prometheus.yml]
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9091:9090"
+  
+  grafana:
+    container_name: grafana
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    image: grafana/grafana
+    networks: 
+      - kafka_network
+    volumes:
+      - ./grafana.yml:/etc/grafana/provisioning/datasources/default.yml
+    ports:
+      - "3000:3000"
+  
+  loki:
+    container_name: loki
+    image: grafana/loki:3.2.0
+    networks: 
+      - kafka_network
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./loki.yaml:/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+
+  jaeger:
+    container_name: jaeger
+    image: jaegertracing/all-in-one:1.58
+    networks: 
+      - kafka_network
+    ports:
+      - "6831:6831/udp"
+      - "16686:16686"
+      - "14268:14268"
+
+networks:
+  kafka_network:
+    name: kafka_docker_TFM
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.100.0/24

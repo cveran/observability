@@ -1,0 +1,62 @@
+services:
+  otel:
+    container_name: otel
+    image: otel/opentelemetry-collector-contrib:latest
+    command: [--config=/etc/otel-config.yml]
+    volumes:
+      - ./otel-config.yml:/etc/otel-config.yml
+    ports:
+      - "4318:4318"
+      - "4317:4317"
+      #- "55681:55681"
+      - "13133:13133"  
+  
+  prometheus:
+    container_name: prometheus
+    image: prom/prometheus
+    command: [--config.file=/etc/prometheus/prometheus.yml]
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9091:9090"
+  
+  grafana:
+    container_name: grafana
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    image: grafana/grafana
+    volumes:
+      - ./grafana.yml:/etc/grafana/provisioning/datasources/default.yml
+    ports:
+      - "3000:3000"
+  
+  loki:
+    container_name: loki
+    image: grafana/loki:3.2.0
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./loki.yaml:/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+
+  jaeger:
+    container_name: jaeger
+    image: jaegertracing/all-in-one:1.58
+    ports:
+      - "6831:6831/udp"  # UDP port for Jaeger agent
+      - "16686:16686"    # Web UI
+      - "14268:14268"    # HTTP port for spans
+  
+  # Uncomment to enable Tempo
+  # tempo:
+  #   container_name: tempo
+  #   image: grafana/tempo:latest
+  #   command: [ "-config.file=/etc/tempo.yaml" ]
+  #   volumes:
+  #     - ./tempo.yaml:/etc/tempo.yaml
+  #   ports:
+  #     - "4317:4317"  # OTLP gRPC
+  #     - "4318:4318"  # OTLP HTTP
+
+  
